@@ -642,12 +642,15 @@ void read_FOdata::read_FOsurfdat_MUSIC(std::vector<FO_surf> &surf_ptr) {
             surfdat >> surf_elem.u2;
             surfdat >> surf_elem.u3;
 
+            // L. Du
             // thermodynamic quantities at freeze out
             surfdat >> dummy; surf_elem.Edec = dummy*hbarC;
             surfdat >> dummy; surf_elem.Tdec = dummy*hbarC;
             surfdat >> dummy; surf_elem.muB = dummy*hbarC;
-            surfdat >> dummy; surf_elem.muS = dummy*hbarC;
-            surfdat >> dummy; surf_elem.muC = dummy*hbarC;
+            //surfdat >> dummy;
+            surf_elem.muS = 1.e-15;;//dummy*hbarC;
+            //surfdat >> dummy;
+            surf_elem.muC = 1.e-15;;//dummy*hbarC;
             surfdat >> dummy;                    //(e+p)/T
             surf_elem.Pdec = dummy*surf_elem.Tdec - surf_elem.Edec;
 

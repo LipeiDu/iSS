@@ -1,4 +1,4 @@
-hydro_mode = 1           # mode for reading in freeze out information 
+hydro_mode = 2           # mode for reading in freeze out information 
                          # 0: reads outputs from VISH2+1
                          # 1: reads outputs from MUSIC assuming 
                          #    boost-invariant
@@ -30,11 +30,11 @@ perform_decays = 0           # flag to perform resonance decay
 
 local_charge_conservation = 0  # flag to impose local charge conservation
 
-calculate_vn = 0         # 1/0: whether to calculate the 
+calculate_vn = 1         # 1/0: whether to calculate the 
                          # dN/(pt dpt dphi dy) and v_n flows 
                          # (they not required for MC-sampling)
 
-MC_sampling = 2          # 0/1/2/3: whether to perform Monte-Carlo sampling
+MC_sampling = 0          # 0/1/2/3: whether to perform Monte-Carlo sampling
                          # (not required for spectra calculation). 
                          # 0: No sampling. 
                          # 1: use dN_dxtdetady to sample. 
@@ -124,12 +124,12 @@ use_historic_flow_output_format = 0    # 1/0: The "historical flow format"
                                        # grouping_particles to speed up the 
                                        # calculations.
 
-calculate_vn_to_order = 9              # v_n's are calculated up to this order
+calculate_vn_to_order = 2              # v_n's are calculated up to this order
 
 sample_upto_desired_particle_number = 0  # flag to run sampling until desired
                                          # particle numbers is reached
 number_of_particles_needed = 100000      # number of hadrons to sample
-number_of_repeated_sampling = 10      # How many times should the sampling be 
+number_of_repeated_sampling = 10       # How many times should the sampling be 
                                        # repeated.
 
 sample_pT_up_to = -1                   # Up to this value will pT be sampled; 

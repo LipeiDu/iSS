@@ -123,6 +123,9 @@ class EmissionFunctionArray {
     double delta_qmu_coeff_table_T0, delta_qmu_coeff_table_mu0;
     double delta_qmu_coeff_table_dT, delta_qmu_coeff_table_dmu;
     double **deltaf_qmu_coeff_tb;
+    
+    //L. Du
+    double *sigmaB, *xieq;
 
     // arrays to speed up computing particle yield
     double sf_dx, sf_x_min, sf_x_max;
@@ -229,6 +232,12 @@ class EmissionFunctionArray {
     void getbulkvisCoefficients(double Tdec, double* bulkvisCoefficients);
     void load_deltaf_qmu_coeff_table(std::string filename);
     double get_deltaf_qmu_coeff(double T, double muB);
+    
+    //L. Du
+    double baryonDiffusionConstant(double T, double muB);
+    double correlationLength(double T, double muB);
+    double InferredPrimaryVariable(double e, double rhob, double e_start, double d_e, int nrhob, double d_rhob, int index_start, int shift, const double * const __restrict__ EOS_Variable);
+
 
     void check_samples_in_memory();
     int get_number_of_sampled_events() {return(Hadron_list->size());};

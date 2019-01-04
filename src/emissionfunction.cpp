@@ -31,6 +31,10 @@
 #define AMOUNT_OF_OUTPUT 0                  // smaller value means less outputs
 #define NUMBER_OF_LINES_TO_WRITE   100000   // string buffer for sample files
 
+// L. Du
+//#define CRITICAL
+#define PRECISION double
+
 using std::cout;
 using std::endl;
 using std::string;
@@ -3730,7 +3734,56 @@ void EmissionFunctionArray::getbulkvisCoefficients(
    return;
 }
 
+// L. Du **************************************************************************************************
+
+int columnIndex(int i, int j, int nrhob){
+    return j + nrhob * i;
+}
+
+// Bilinear interplotion function
+inline PRECISION biLinearInterpolation(PRECISION x, PRECISION y, PRECISION q11, PRECISION q12, PRECISION q21, PRECISION q22, PRECISION x1, PRECISION x2, PRECISION y1, PRECISION y2){
+    PRECISION x2x1, y2y1, x2x, y2y, yy1, xx1;
+    x2x1 = x2 - x1;
+    y2y1 = y2 - y1;
+    x2x  = x2 - x;
+    y2y  = y2 - y;
+    yy1  = y - y1;
+    xx1  = x - x1;
+    return 1.0 / (x2x1 * y2y1) * (q11 * x2x * y2y + q21 * xx1 * y2y + q12 * x2x * yy1 + q22 * xx1 * yy1);
+}
+
+// If (e, rhob) lies in the nontivial zone, this function can do 2D interpolation to give the inferred value for (e, rhob)
+double EmissionFunctionArray::InferredPrimaryVariable(PRECISION e, PRECISION rhob, PRECISION e_start, PRECISION d_e, int nrhob, PRECISION d_rhob, int index_start, int shift, const PRECISION * const __restrict__ EOS_Variable){
+    
+    int m, n;
+    int s11, s12, s21, s22;
+    PRECISION e1, e2, rhob1, rhob2;
+    PRECISION Q11, Q12, Q21, Q22;
+    
+    m = floor((e-e_start)/d_e);
+    n = floor(rhob/d_rhob);
+    
+    e1 = e_start + d_e * m;
+    e2 = e_start + d_e * (m+1);
+    
+    rhob1 = d_rhob * n;
+    rhob2 = d_rhob * (n+1);
+    
+    s11 = index_start + columnIndex(m,n,nrhob);
+    s12 = index_start + columnIndex(m,n+1,nrhob);
+    s21 = index_start + columnIndex(m+1,n,nrhob);
+    s22 = index_start + columnIndex(m+1,n+1,nrhob);
+    
+    Q11 = EOS_Variable[s11];
+    Q12 = EOS_Variable[s12];
+    Q21 = EOS_Variable[s21];
+    Q22 = EOS_Variable[s22];
+    
+    return biLinearInterpolation(e, rhob, Q11, Q12, Q21, Q22, e1, e2, rhob1, rhob2);
+}
+
 void EmissionFunctionArray::load_deltaf_qmu_coeff_table(string filename) {
+#ifndef CRITICAL
     ifstream table(filename.c_str());
     deltaf_qmu_coeff_table_length_T = 150;
     deltaf_qmu_coeff_table_length_mu = 100;
@@ -3752,9 +3805,97 @@ void EmissionFunctionArray::load_deltaf_qmu_coeff_table(string filename) {
         }
     }
     table.close();
+#else
+    PRECISION x, y;
+    
+    size_t bytes = sizeof(PRECISION);
+    
+    FILE *filesigmab;
+    sigmaB = (PRECISION *)calloc(5751, bytes);
+    
+    // baryon conductivity
+    filesigmab = fopen ("iSS_tables/sigmaB.dat","r");
+    if(filesigmab==NULL){
+        printf("The EOS file sigmaB.dat was not opened...\n");
+        exit(-1);
+    }
+    else
+    {
+        fseek(filesigmab,0L,SEEK_SET);
+        for(int i = 0; i < 5751; ++i){
+            fscanf(filesigmab,"%lf %lf %lf", & x, & y, & sigmaB[i]);
+        }
+    }
+    fclose(filesigmab);
+    
+    printf("sigmaB table is read in.\n");
+
+    // xi
+    FILE *filexi;
+    xieq = (PRECISION *)calloc(6966, bytes);
+    
+    filexi = fopen ("iSS_tables/xivsmuT.dat","r");
+    if(filexi==NULL){
+        printf("xivsmuT.dat was not opened...\n");
+        exit(-1);
+    }
+    else
+    {
+        fseek(filexi,0L,SEEK_SET);
+        for(int i = 0; i < 6966; ++i){
+            fscanf(filexi,"%lf %lf %lf", & x, & y, & xieq[i]);
+        }
+    }
+    fclose(filexi);
+    
+    printf("xi table is read in.\n");
+    
+#endif
+}
+
+double EmissionFunctionArray::baryonDiffusionConstant(PRECISION T, PRECISION muB){
+    PRECISION T0 = T*1000; // MeV
+    PRECISION muB0 = muB*1000; // MeV
+
+    //InferredPrimaryVariable returns MeV, needs 1/(GeV*fm^2)
+
+    PRECISION hbarC2 = hbarC*hbarC;
+
+    if((100<=T0)&&(T0<=450)){
+        if((0<=muB0)&&(muB0<=400))
+            return InferredPrimaryVariable(muB0, T0-100, 0, 5, 71, 5, 0, 0, sigmaB)/hbarC2/1000;
+        else
+            return InferredPrimaryVariable(400, T0-100, 0, 5, 71, 5, 0, 0, sigmaB)/hbarC2/1000;
+    }else if(T0<100)
+    {
+        if((0<=muB0)&&(muB0<=400))
+            return InferredPrimaryVariable(muB0, 0, 0, 5, 71, 5, 0, 0, sigmaB)/hbarC2/1000;
+        else
+            return 0.0543361/hbarC2/1000;
+    }else
+    {
+        if((0<=muB0)&&(muB0<=400))
+            return InferredPrimaryVariable(muB0, 350, 0, 5, 71, 5, 0, 0, sigmaB)/hbarC2/1000;
+        else
+            return 22.5093/hbarC2/1000;
+    }
+    
+}
+
+double EmissionFunctionArray::correlationLength(PRECISION T, PRECISION muB){
+    
+    if((0.12<=T0)&&(T0<=0.2)){
+        if((0.28<=muB0)&&(muB0<=0.45)){
+            return InferredPrimaryVariable(muB0, T0-0.12, 0.28, 0.002, 81, 0.001, 0, 0, xieq);
+        }
+        else
+            return 1.0;
+    }else
+        return 1.0;
 }
 
 double EmissionFunctionArray::get_deltaf_qmu_coeff(double T, double muB) {
+#ifndef CRITICAL
     int idx_T = static_cast<int>((T - delta_qmu_coeff_table_T0)
                                  /delta_qmu_coeff_table_dT);
     int idx_mu = static_cast<int>((muB - delta_qmu_coeff_table_mu0)
@@ -3789,7 +3930,19 @@ double EmissionFunctionArray::get_deltaf_qmu_coeff(double T, double muB) {
                     + f3*x_fraction*y_fraction
                     + f4*x_fraction*(1. - y_fraction));
     return(coeff*hbarC);
+#else
+    PRECISION corrL = correlationLength(T, muB);
+    PRECISION corrL2 = corrL * corrL; // unitless
+    PRECISION sigmaB = baryonDiffusionConstant(T, muB); // 1/(GeV*fm^2)
+    PRECISION kappaB = sigmaB*T; // 1/fm^2
+    PRECISION tauB = 0.4/T; // GeV^-1
+    PRECISION kappaHat = kappaB/tauB; // GeV/fm^2
+    return kappaHat/corrL2; // returned unit is GeV/fm^2
+#endif
 }
+
+
+// L. Du **************************************************************************************************
 
 void EmissionFunctionArray::initialize_special_function_arrays() {
     cout << "Initializing special function arrays ... ";
