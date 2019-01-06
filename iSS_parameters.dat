@@ -10,7 +10,7 @@ turn_on_diff = 0         # read in baryon diffusion current
 
 include_deltaf_shear = 0      # include delta f contribution from shear
 include_deltaf_bulk = 0       # include delta f contribution from bulk
-include_deltaf_diffusion = 0  # include delta f contribution from diffusion
+include_deltaf_diffusion = 1  # include delta f contribution from diffusion
 
 bulk_deltaf_kind = 1     # 0 : 14-momentum approximation
                          # 1 : relaxation time approximation
@@ -34,7 +34,7 @@ calculate_vn = 1         # 1/0: whether to calculate the
                          # dN/(pt dpt dphi dy) and v_n flows 
                          # (they not required for MC-sampling)
 
-MC_sampling = 0          # 0/1/2/3: whether to perform Monte-Carlo sampling
+MC_sampling = 1          # 0/1/2/3: whether to perform Monte-Carlo sampling
                          # (not required for spectra calculation). 
                          # 0: No sampling. 
                          # 1: use dN_dxtdetady to sample. 
@@ -129,7 +129,7 @@ calculate_vn_to_order = 2              # v_n's are calculated up to this order
 sample_upto_desired_particle_number = 0  # flag to run sampling until desired
                                          # particle numbers is reached
 number_of_particles_needed = 100000      # number of hadrons to sample
-number_of_repeated_sampling = 10       # How many times should the sampling be 
+number_of_repeated_sampling = 500000       # How many times should the sampling be 
                                        # repeated.
 
 sample_pT_up_to = -1                   # Up to this value will pT be sampled; 

@@ -32,7 +32,7 @@
 #define NUMBER_OF_LINES_TO_WRITE   100000   // string buffer for sample files
 
 // L. Du
-//#define CRITICAL
+#define CRITICAL
 #define PRECISION double
 
 using std::cout;
@@ -3884,9 +3884,9 @@ double EmissionFunctionArray::baryonDiffusionConstant(PRECISION T, PRECISION muB
 
 double EmissionFunctionArray::correlationLength(PRECISION T, PRECISION muB){
     
-    if((0.12<=T0)&&(T0<=0.2)){
-        if((0.28<=muB0)&&(muB0<=0.45)){
-            return InferredPrimaryVariable(muB0, T0-0.12, 0.28, 0.002, 81, 0.001, 0, 0, xieq);
+    if((0.12<=T)&&(T<=0.2)){
+        if((0.28<=muB)&&(muB<=0.45)){
+            return InferredPrimaryVariable(muB, T-0.12, 0.28, 0.002, 81, 0.001, 0, 0, xieq);
         }
         else
             return 1.0;
