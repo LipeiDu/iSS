@@ -17,6 +17,7 @@
 #include <cmath>
 #include <iomanip>
 #include <vector>
+#include <array>
 
 #include "zlib.h"
 #include "data_struct.h"
@@ -32,7 +33,7 @@
 #define NUMBER_OF_LINES_TO_WRITE   100000   // string buffer for sample files
 
 // L. Du
-#define CRITICAL
+//#define CRITICAL
 #define PRECISION double
 
 using std::cout;
@@ -50,8 +51,8 @@ EmissionFunctionArray::EmissionFunctionArray(
     std::shared_ptr<RandomUtil::Random> ran_gen,
     Table* chosen_particles_in, Table* pt_tab_in, Table* phi_tab_in,
     Table* y_minus_eta_tab_in, std::vector<particle_info> particles_in,
-    std::vector<FO_surf> FOsurf_ptr_in, int flag_PCE_in,
-    ParameterReader* paraRdr_in, string path_in) {
+    const std::vector<FO_surf> &FOsurf_ptr_in, int flag_PCE_in,
+    ParameterReader* paraRdr_in, string path_in) : FOsurf_ptr(FOsurf_ptr_in) {
 
     ran_gen_ptr = ran_gen;
 
@@ -75,7 +76,7 @@ EmissionFunctionArray::EmissionFunctionArray(
     particles = particles_in;
     Nparticles = particles.size();
 
-    FOsurf_ptr = FOsurf_ptr_in;
+    //FOsurf_ptr = FOsurf_ptr_in;
     FO_length = FOsurf_ptr.size();
 
     paraRdr = paraRdr_in;
@@ -93,7 +94,7 @@ EmissionFunctionArray::EmissionFunctionArray(
     turn_on_rhob         = paraRdr->getVal("turn_on_rhob");
     flag_restrict_deltaf = paraRdr->getVal("restrict_deltaf");
     deltaf_max_ratio     = paraRdr->getVal("deltaf_max_ratio");
-    
+
     MC_sampling = paraRdr->getVal("MC_sampling");
     local_charge_conservation = paraRdr->getVal("local_charge_conservation");
     number_of_repeated_sampling = paraRdr->getVal("number_of_repeated_sampling");
@@ -102,18 +103,19 @@ EmissionFunctionArray::EmissionFunctionArray(
                             paraRdr->getVal("output_samples_into_files"));
     flag_store_samples_in_memory = paraRdr->getVal("store_samples_in_memory");
     if (MC_sampling != 2) {
-        cout << "[Warning]: store_samples_in_memory is only supported for "
-             << "MC_sample == 2!" << endl;
+        messager << "store_samples_in_memory is only supported for "
+                 << "MC_sample == 2!";
+        messager.flush("warning");
         flag_store_samples_in_memory = 0;
     }
 
     if (flag_store_samples_in_memory == 1) {
         Hadron_list = new vector< vector<iSS_Hadron>* >;
     }
-    
+
     flag_perform_decays = paraRdr->getVal("perform_decays");
     if (flag_perform_decays == 1) {
-        decayer_ptr = new particle_decay(ran_gen_ptr.lock());
+        decayer_ptr = new particle_decay(ran_gen_ptr);
     }
 
     // allocate internal buffer
@@ -121,7 +123,7 @@ EmissionFunctionArray::EmissionFunctionArray(
     dN_pTdpTdphidy_max = new Table(pT_tab_length, phi_tab_length);
     std::ostringstream filename_stream;
     dN_pTdpTdphidy_filename = path + "/dN_pTdpTdphidy.dat";
-  
+
     if (MC_sampling == 1) {
         dN_dxtdetady = new double*[y_minus_eta_tab_length];
         for (int k = 0; k < y_minus_eta_tab_length; k++) 
@@ -137,7 +139,7 @@ EmissionFunctionArray::EmissionFunctionArray(
     // deal with chosen_particle_xxx tables
     number_of_chosen_particles = chosen_particles_in->getNumberOfRows();
     // first, for spectra and flow calculations
-    chosen_particles_01_table = new int[Nparticles];
+    chosen_particles_01_table.resize(Nparticles, 0);
     for (int n = 0; n < Nparticles; n++)
         chosen_particles_01_table[n] = 0;
     for (int m = 0; m < number_of_chosen_particles; m++) {
@@ -150,8 +152,8 @@ EmissionFunctionArray::EmissionFunctionArray(
         }
     }
     // next, for sampling processes
-    chosen_particles_sampling_table = new int[number_of_chosen_particles];
-    unidentifiedPid_table = new int [number_of_chosen_particles];
+    chosen_particles_sampling_table.resize(number_of_chosen_particles, 0);
+    unidentifiedPid_table.resize(number_of_chosen_particles, 0);
     // first copy the chosen_particles table, but now using indecies 
     // instead of monval
     int current_idx = 0;
@@ -171,13 +173,18 @@ EmissionFunctionArray::EmissionFunctionArray(
     }
     // check whether all chosen particles are in the particle list
     if (number_of_chosen_particles != current_idx) {
-        cout << "Warning: not all chosen particles are "
-             << "in the pdg particle list!" << endl;
-        cout << "There are " << number_of_chosen_particles - current_idx 
-             << " particles can not be found in the pdg particle list!" << endl;
-        cout << "Their monte carlo numbers are:" << endl;
-        for (int i = 0; i < number_of_chosen_particles - current_idx ; i++)
-            cout << unidentifiedPid_table[i] << endl;
+        messager << "not all chosen particles are "
+                 << "in the pdg particle list!";
+        messager.flush("warning");
+        messager << "There are " << number_of_chosen_particles - current_idx 
+                 << " particles can not be found in the pdg particle list!";
+        messager.flush("warning");
+        messager << "Their monte carlo numbers are:";
+        messager.flush("warning");
+        for (int i = 0; i < number_of_chosen_particles - current_idx ; i++) {
+            messager << unidentifiedPid_table[i];
+            messager.flush("warning");
+        }
         number_of_chosen_particles = current_idx;
     }
     // next re-order them so that particles with similar mass are adjacent
@@ -253,7 +260,7 @@ EmissionFunctionArray::EmissionFunctionArray(
         //for (long l=0; l<FO_length; l++) {
         //    dN_dxtdy_4all[l] = new double[number_of_chosen_particles];
         //}
-        dN_dxtdy_for_one_particle_species = new double[FO_length];
+        dN_dxtdy_for_one_particle_species.resize(FO_length, 0.);
     }
     //sorted_FZ = new long[FO_length];
 
@@ -293,7 +300,7 @@ EmissionFunctionArray::EmissionFunctionArray(
     gsl_rng_env_setup();
     gsl_type_random_number = gsl_rng_default;
     gsl_random_r = gsl_rng_alloc(gsl_type_random_number);
-    gsl_rng_set(gsl_random_r, ran_gen_ptr.lock()->get_seed());
+    gsl_rng_set(gsl_random_r, ran_gen_ptr->get_seed());
 
     // arrays for bulk delta f coefficients
     if (INCLUDE_BULK_DELTAF == 1 && bulk_deltaf_kind == 0) {
@@ -337,10 +344,6 @@ EmissionFunctionArray::~EmissionFunctionArray() {
         delete[] dN_dxtdetady_pT_max;
     }
 
-    delete[] chosen_particles_01_table;
-    delete[] chosen_particles_sampling_table;
-    delete[] unidentifiedPid_table;
-
     for (int j=0; j<phi_tab_length; j++) {
         delete[] trig_phi_table[j];
     }
@@ -351,13 +354,11 @@ EmissionFunctionArray::~EmissionFunctionArray() {
     }
     delete[] hypertrig_y_minus_eta_table;
 
-    if (MC_sampling == 2) {
-        //for (long l=0; l<FO_length; l++)
-        //    delete[] dN_dxtdy_4all[l];
-        //delete[] dN_dxtdy_4all;
-        delete[] dN_dxtdy_for_one_particle_species;
-    }
-
+    //if (MC_sampling == 2) {
+    //    for (long l=0; l<FO_length; l++)
+    //        delete[] dN_dxtdy_4all[l];
+    //    delete[] dN_dxtdy_4all;
+    //}
     //delete[] sorted_FZ;
 
     for (int j=0; j<phi_tab4Sampling_length; j++) {
@@ -389,7 +390,6 @@ EmissionFunctionArray::~EmissionFunctionArray() {
     if (INCLUDE_DIFFUSION_DELTAF == 1) {
         delete [] sf_expint_En;
     }
-    delete [] lambert_W;
 
     if (flag_store_samples_in_memory == 1) {
         for (unsigned int i = 0; i < Hadron_list->size(); i++) {
@@ -397,7 +397,7 @@ EmissionFunctionArray::~EmissionFunctionArray() {
         }
         Hadron_list->clear();
     }
-    
+
     if (flag_perform_decays == 1) {
         delete decayer_ptr;
     }
@@ -427,8 +427,8 @@ void EmissionFunctionArray::calculate_dN_dxtdetady(int particle_idx)
   const int charge   = particle->charge;
 
   double prefactor = 1.0/(8.0*(M_PI*M_PI*M_PI))/hbarC/hbarC/hbarC;
-  
-  double *bulkvisCoefficients = new double[3];
+
+  std::array<double, 3> bulkvisCoefficients = {0.0};
 
 
   // initialize to 0
@@ -623,12 +623,10 @@ void EmissionFunctionArray::calculate_dN_dxtdetady(int particle_idx)
       print_progressbar(1);
   //cout << endl << "------------------------------------- " << endl;
 
-    delete [] bulkvisCoefficients;
-
   sw.toc();
-  cout << endl 
-       << " -- Calculate_dN_dxtdetady finished in " 
-       << sw.takeTime() << " seconds." << endl;
+  messager << " -- Calculate_dN_dxtdetady finished in " 
+           << sw.takeTime() << " seconds.";
+  messager.flush("info");
 }
 //***************************************************************************
 
@@ -656,8 +654,7 @@ void EmissionFunctionArray::calculate_dN_pTdpTdphidy(int particle_idx) {
 
     double prefactor = 1.0/(8.0*(M_PI*M_PI*M_PI))/hbarC/hbarC/hbarC;
 
-  
-    double *bulkvisCoefficients = new double[3];
+    std::array<double, 3> bulkvisCoefficients = {0.0};
 
     // for intermedia results
     //cout << "initializing intermedia variables... ";
@@ -758,10 +755,10 @@ void EmissionFunctionArray::calculate_dN_pTdpTdphidy(int particle_idx) {
                     qmu1 = surf->qmu1;
                     qmu2 = surf->qmu2;
                     qmu3 = surf->qmu3;
-                    
+
                     double mu_B = surf->muB;
                     deltaf_qmu_coeff = get_deltaf_qmu_coeff(Tdec, mu_B);
-                    
+
                     double rho_B = surf->Bn;
                     prefactor_qmu = rho_B/(Edec + Pdec);  // 1/GeV
                 }
@@ -804,7 +801,7 @@ void EmissionFunctionArray::calculate_dN_pTdpTdphidy(int particle_idx) {
                                        *(prefactor_qmu - baryon/pdotu)
                                        *qmufactor/deltaf_qmu_coeff);
                     }
-                  
+
                     double result;
                     double resize_factor = 1.0;
                     if (flag_restrict_deltaf == 1) {
@@ -847,12 +844,10 @@ void EmissionFunctionArray::calculate_dN_pTdpTdphidy(int particle_idx) {
         }
     }
 
-    delete [] bulkvisCoefficients;
-
     sw.toc();
-    cout << endl 
-        << " -- Calculate_dN_pTdpTdphidy finished in " 
-        << sw.takeTime() << " seconds." << endl;
+    messager << " -- Calculate_dN_pTdpTdphidy finished in " 
+             << sw.takeTime() << " seconds.";
+    messager.flush("info");
 }
 //***************************************************************************
 
@@ -1131,8 +1126,9 @@ void EmissionFunctionArray::calculate_dN_pTdpTdphidy_and_flows_4all_old_output(
     } // n: particle loop
 
     sw.toc();
-    cout << " -- Calculate_dN_pTdpTdphidy_and_flows_4all finishes " 
-         << sw.takeTime() << " seconds." << endl;
+    messager << " -- Calculate_dN_pTdpTdphidy_and_flows_4all finishes " 
+             << sw.takeTime() << " seconds.";
+    messager.flush("info");
 }
 //***************************************************************************
 
@@ -1230,8 +1226,9 @@ void EmissionFunctionArray::calculate_dN_pTdpTdphidy_and_flows_4all(
     of.close();
 
     sw.toc();
-    cout << " -- Calculate_dN_pTdpTdphidy_and_flows_4all finishes " 
-         << sw.takeTime() << " seconds." << endl;
+    messager << " -- Calculate_dN_pTdpTdphidy_and_flows_4all finishes " 
+             << sw.takeTime() << " seconds.";
+    messager.flush("info");
 
 }
 //***************************************************************************
@@ -1270,7 +1267,7 @@ void EmissionFunctionArray::sample_using_dN_dxtdetady_smooth_pT_phi() {
     if (pT_to < 0.) {
         pT_to = pT_tab->getLast(1);  // use table to determine pT range
     }
-    
+
     // If dN/(dx_t deta dy) is evaluated to be smaller than this value, 
     // then it is replaced by this value.
     double zero = paraRdr->getVal("minimum_emission_function_val"); 
@@ -1286,7 +1283,7 @@ void EmissionFunctionArray::sample_using_dN_dxtdetady_smooth_pT_phi() {
 
     double prefactor = 1.0/(8.0*(M_PI*M_PI*M_PI))/hbarC/hbarC/hbarC;
 
-    double *bulkvisCoefficients = new double[3];
+    std::array<double, 3> bulkvisCoefficients = {0.0};
 
     // create local cache
     double delta_y_minus_eta_tab[y_minus_eta_tab_length];
@@ -1306,7 +1303,7 @@ void EmissionFunctionArray::sample_using_dN_dxtdetady_smooth_pT_phi() {
                             dN_dxtdetady[k][l]*delta_y_minus_eta_tab[k]);
 
     RandomVariable2DArray rand2D(dN_dxtdetady_with_weight, FO_length, 
-                                 y_minus_eta_tab_length, ran_gen_ptr.lock(),
+                                 y_minus_eta_tab_length, ran_gen_ptr,
                                  zero);
 
     // first calcualte total number of particles
@@ -1347,9 +1344,9 @@ void EmissionFunctionArray::sample_using_dN_dxtdetady_smooth_pT_phi() {
     double y_LB = paraRdr->getVal("y_LB");
     double y_RB = paraRdr->getVal("y_RB");
 
-    cout << " dN_dy=" << dN_dy << ", ";
     double dN = (y_RB-y_LB)*dN_dy;
-    cout << "dN=" << dN << "..." << endl;
+    messager << " dN_dy=" << dN_dy << ", " << "dN=" << dN << "...";
+    messager.flush("info");
     if (AMOUNT_OF_OUTPUT>0) print_progressbar(-1);
     long sample_writing_signal = 0;
     long control_writing_signal = 0;
@@ -1437,10 +1434,10 @@ void EmissionFunctionArray::sample_using_dN_dxtdetady_smooth_pT_phi() {
                 qmu1 = surf->qmu1;
                 qmu2 = surf->qmu2;
                 qmu3 = surf->qmu3;
-                
+
                 double mu_B = surf->muB;
                 deltaf_qmu_coeff = get_deltaf_qmu_coeff(Tdec, mu_B);
-                
+
                 double rho_B = surf->Bn;
                 prefactor_qmu = rho_B/(Edec + Pdec);  // 1/GeV
             }
@@ -1454,7 +1451,7 @@ void EmissionFunctionArray::sample_using_dN_dxtdetady_smooth_pT_phi() {
                 // refer to calculate_dNArrays function to see how the rate 
                 // is calculated
                 // Basically it is "just Cooper-Frye"
-                pT = sqrt(pT_to*pT_to*ran_gen_ptr.lock()->rand_uniform());
+                pT = sqrt(pT_to*pT_to*ran_gen_ptr->rand_uniform());
                 mT = sqrt(mass*mass + pT*pT);
 
                 double pt = (
@@ -1462,7 +1459,7 @@ void EmissionFunctionArray::sample_using_dN_dxtdetady_smooth_pT_phi() {
                 double pz = (
                     mT*hypertrig_y_minus_eta_table[y_minus_eta_s_idx][1]);
 
-                phi = 2*M_PI*ran_gen_ptr.lock()->rand_uniform();
+                phi = 2*M_PI*ran_gen_ptr->rand_uniform();
                 px  = pT*cos(phi);
                 py  = pT*sin(phi);
 
@@ -1471,7 +1468,7 @@ void EmissionFunctionArray::sample_using_dN_dxtdetady_smooth_pT_phi() {
                 double f0 = 1./(exp(expon)+sign);
 
                 double pdsigma = pt*da0 + px*da1 + py*da2 + pz*da3/tau;
-                  
+
                 double delta_f_shear = 0.0;
                 if (INCLUDE_DELTAF) {
                     double Wfactor = (
@@ -1497,7 +1494,6 @@ void EmissionFunctionArray::sample_using_dN_dxtdetady_smooth_pT_phi() {
                                    *(prefactor_qmu - baryon/pdotu)
                                    *qmufactor/deltaf_qmu_coeff);
                 }
-            
                 double result;
                 double resize_factor = 1.0;
                 if (flag_restrict_deltaf == 1) {
@@ -1524,7 +1520,7 @@ void EmissionFunctionArray::sample_using_dN_dxtdetady_smooth_pT_phi() {
                 if (AMOUNT_OF_OUTPUT>1 && test > 1.)
                     cout << "WTH?!" << endl; 
 
-                if (ran_gen_ptr.lock()->rand_uniform() < test) 
+                if (ran_gen_ptr->rand_uniform() < test) 
                     break;  // accept sample! 
 
                 tries ++;
@@ -1540,12 +1536,12 @@ void EmissionFunctionArray::sample_using_dN_dxtdetady_smooth_pT_phi() {
                 sample_idx++; // write-out sample
 
             if (positive_y_minus_eta_table_only) {
-                double flip_a_coin = ran_gen_ptr.lock()->rand_uniform();
+                double flip_a_coin = ran_gen_ptr->rand_uniform();
                 if (flip_a_coin > 0.5)
                     y_minus_eta_s = -y_minus_eta_s;
             }
 
-            double y = y_LB + ran_gen_ptr.lock()->rand_uniform()*(y_RB-y_LB);
+            double y = y_LB + ran_gen_ptr->rand_uniform()*(y_RB-y_LB);
             double eta_s = y - y_minus_eta_s;
             double p_z = mT*sinh(y);
             double E = mT*cosh(y);
@@ -1642,11 +1638,9 @@ void EmissionFunctionArray::sample_using_dN_dxtdetady_smooth_pT_phi() {
     }
     of_sample_format.close();
 
-    delete [] bulkvisCoefficients;
-
     sw.toc();
-    cout << endl 
-         << "Sampling finished in " << sw.takeTime() << " seconds." << endl;
+    messager << "Sampling finished in " << sw.takeTime() << " seconds.";
+    messager.flush("info");
 
 }
 //***************************************************************************
@@ -1697,7 +1691,7 @@ void EmissionFunctionArray::sample_using_dN_pTdpTdphidy() {
 
     double prefactor = 1.0/(8.0*(M_PI*M_PI*M_PI))/hbarC/hbarC/hbarC;
 
-    double *bulkvisCoefficients = new double[3];
+    std::array<double, 3> bulkvisCoefficients = {0.0};
 
     //------------------------------------------------------------------------
     // Prepare the inverse CDF
@@ -1730,12 +1724,12 @@ void EmissionFunctionArray::sample_using_dN_pTdpTdphidy() {
                 dN_pTdpTdphidy_max->interp2(pT_index, phi_index, 4));
         }
     }
-        
+
     // create random variable using inverse CDF
     RandomVariable2DArray rand2D(dN_pTdpTdphidy_with_weight_4Sampling, 
                                  phi_tab4Sampling_length, 
                                  pT_tab4Sampling_length,
-                                 ran_gen_ptr.lock(), zero);
+                                 ran_gen_ptr, zero);
 
     //-----------------------------------------------------------------------
     // start sampling
@@ -1791,10 +1785,11 @@ void EmissionFunctionArray::sample_using_dN_pTdpTdphidy() {
     double y_LB = paraRdr->getVal("y_LB");
     double y_RB = paraRdr->getVal("y_RB");
 
-    cout << " dN_dy = " << dN_dy << ", ";
-    cout << "dN_dy_CF =" << dN_dy_CF << ", ";
+    messager << " dN_dy = " << dN_dy << ", dN_dy_CF =" << dN_dy_CF << ", ";
+    messager.flush("info");
     double dN = (y_RB-y_LB)*dN_dy_CF;
-    cout << "dN = " << dN << "..." << endl;
+    messager << "dN = " << dN << "...";
+    messager.flush("info");
     if (AMOUNT_OF_OUTPUT>0) print_progressbar(-1);
     long sample_writing_signal = 0;
     long control_writing_signal = 0;
@@ -1836,14 +1831,13 @@ void EmissionFunctionArray::sample_using_dN_pTdpTdphidy() {
                             dN_pTdpTdphidy_max_4Sampling[pT_idx][phi_idx]);
 
             long tries = 1;
-            FO_surf *surf = nullptr;
             while (tries<maximum_impatience) {
                 bool found_sample = false;
 
                 // get a surface index
-                FO_idx = floor(ran_gen_ptr.lock()->rand_uniform()*(FO_length-1e-30));
+                FO_idx = floor(ran_gen_ptr->rand_uniform()*(FO_length-1e-30));
 
-                surf = &FOsurf_ptr[FO_idx];
+                const FO_surf *surf = &FOsurf_ptr[FO_idx];
 
                 double Tdec = surf->Tdec;
                 double inv_Tdec = 1.0/Tdec;
@@ -1904,10 +1898,9 @@ void EmissionFunctionArray::sample_using_dN_pTdpTdphidy() {
                     qmu1 = surf->qmu1;
                     qmu2 = surf->qmu2;
                     qmu3 = surf->qmu3;
-                    
+
                     double mu_B = surf->muB;
                     deltaf_qmu_coeff = get_deltaf_qmu_coeff(Tdec, mu_B);
-                    
                     double rho_B = surf->Bn;
                     prefactor_qmu = rho_B/(Edec + Pdec);  // 1/GeV
                 }
@@ -1952,7 +1945,7 @@ void EmissionFunctionArray::sample_using_dN_pTdpTdphidy() {
                                    *(prefactor_qmu - baryon/pdotu_max)
                                    *qmufactor/deltaf_qmu_coeff);
                 }
-                
+
                 double results_max;
                 delta_f_shear = std::max(delta_f_shear, 0.0);
                 delta_f_bulk = std::max(delta_f_bulk, 0.0);
@@ -1965,18 +1958,18 @@ void EmissionFunctionArray::sample_using_dN_pTdpTdphidy() {
                 // may not be the maximum for the actual continuous function
                 if (results_max/dN_max_sampling > (1.0+1e-6)) {
                     total_violation++;
-                } 
-                
-                if (ran_gen_ptr.lock()->rand_uniform() > results_max/dN_max_sampling) {
-                    tries++; 
+                }
+
+                if (ran_gen_ptr->rand_uniform() > results_max/dN_max_sampling) {
+                    tries++;
                     continue;
                 } // discard this freeze-out cell
-                
+
                 for (int sub_try=0; sub_try<y_minus_eta_tab_length/2; 
                      sub_try++) {
                     // get a y-eta_s index
                     y_minus_eta_s_idx = (
-                        floor(ran_gen_ptr.lock()->rand_uniform()
+                        floor(ran_gen_ptr->rand_uniform()
                               *(y_minus_eta_tab_length-1e-30))); 
                     double pt = (
                         mT*hypertrig_y_minus_eta_table[y_minus_eta_s_idx][0]);
@@ -2032,9 +2025,9 @@ void EmissionFunctionArray::sample_using_dN_pTdpTdphidy() {
 
                     if (result/results_max > (1.0+1e-6)) {
                         total_violation++;
-                    } 
-                    
-                    if (ran_gen_ptr.lock()->rand_uniform() < result/results_max) {
+                    }
+
+                    if (ran_gen_ptr->rand_uniform() < result/results_max) {
                         found_sample=true; 
                         break;
                     } // accept sample! 
@@ -2060,12 +2053,13 @@ void EmissionFunctionArray::sample_using_dN_pTdpTdphidy() {
 
             double y_minus_eta_s = y_minus_eta_tab->get(1,y_minus_eta_s_idx+1);
             if (positive_y_minus_eta_table_only) {
-                double flip_a_coin = ran_gen_ptr.lock()->rand_uniform();
+                double flip_a_coin = ran_gen_ptr->rand_uniform();
                 if (flip_a_coin > 0.5)
                     y_minus_eta_s = -y_minus_eta_s;
             }
 
-            double y = y_LB + ran_gen_ptr.lock()->rand_uniform()*(y_RB-y_LB);
+            const FO_surf *surf = &FOsurf_ptr[FO_idx];
+            double y = y_LB + ran_gen_ptr->rand_uniform()*(y_RB-y_LB);
             double eta_s = y - y_minus_eta_s;
             double p_z = mT*sinh(y);
             double E = mT*cosh(y);
@@ -2122,7 +2116,7 @@ void EmissionFunctionArray::sample_using_dN_pTdpTdphidy() {
          << total_tries/number_of_repeated_sampling/dN << endl;
     cout << endl << "Average number of violations: " 
          << float(total_violation)/number_of_repeated_sampling/dN << endl;
-    
+
     ofstream of_sample_format(samples_format_filename.c_str());
     // Be careful that ParameterReader class convert all strings to lower case
     // so do NOT use variable names that differ only by cases!
@@ -2171,11 +2165,9 @@ void EmissionFunctionArray::sample_using_dN_pTdpTdphidy() {
         delete[] dN_pTdpTdphidy_max_4Sampling[i];
     delete[] dN_pTdpTdphidy_max_4Sampling;
 
-    delete [] bulkvisCoefficients;
-
     sw.toc();
-    cout << endl 
-         << "Sampling finished in " << sw.takeTime() << " seconds." << endl;
+    messager << "Sampling finished in " << sw.takeTime() << " seconds.";
+    messager.flush("info");
 }
 //***************************************************************************
 
@@ -2203,7 +2195,7 @@ inline long EmissionFunctionArray::determine_number_to_sample(
         case 1: // with possibly 1 more particle
             number_to_sample = dN_dy_int;
             // lucky! 1 more particle...
-            if (ran_gen_ptr.lock()->rand_uniform() < dN_dy_fraction)
+            if (ran_gen_ptr->rand_uniform() < dN_dy_fraction)
                 number_to_sample++; 
             break;
         case 10: // use NBD
@@ -2294,7 +2286,7 @@ void EmissionFunctionArray::calculate_dN_dxtdetady_and_sample_4all()
             double tau_max = paraRdr->getVal("bin_tau_max");
             calculate_dN_dtau_using_dN_dxtdetady(tau0, dtau, tau_max);
         }
-        
+
         if (calculate_dN_dx)
         {
             double x_min = paraRdr->getVal("bin_x_min");
@@ -2619,7 +2611,7 @@ void EmissionFunctionArray::shell() {
 void EmissionFunctionArray::combine_samples_to_OSCAR() {
     Stopwatch sw;
     sw.tic();
-    cout << " -- Now combine sample files to OSCAR file..." << endl;
+    messager.info(" -- Now combine sample files to OSCAR file...");
 
     char line_buffer[500];
 
@@ -2710,25 +2702,29 @@ void EmissionFunctionArray::combine_samples_to_OSCAR() {
     } else {
         for (unsigned int iev = 0; iev < Hadron_list->size(); iev++) {
             int total_number_of_particles = (*Hadron_list)[iev]->size();
-            // sub-header for each event
-            oscar << setw(10) << iev << "  " 
-                  << setw(10) << total_number_of_particles << "  " 
-                  << setw(8) << 0.0 << "  " << setw(8) << 0.0 << endl;
-            for (int ipart = 0; ipart < total_number_of_particles; ipart++) {
-                oscar << setw(10) << ipart + 1 << "  "
-                      << setw(10) << (*(*Hadron_list)[iev])[ipart].pid << "  ";
-                sprintf(line_buffer, 
-                        "%24.16e  %24.16e  %24.16e  %24.16e  %24.16e  %24.16e  %24.16e  %24.16e  %24.16e",
-                        (*(*Hadron_list)[iev])[ipart].px,
-                        (*(*Hadron_list)[iev])[ipart].py,
-                        (*(*Hadron_list)[iev])[ipart].pz,
-                        (*(*Hadron_list)[iev])[ipart].E,
-                        (*(*Hadron_list)[iev])[ipart].mass,
-                        (*(*Hadron_list)[iev])[ipart].x,
-                        (*(*Hadron_list)[iev])[ipart].y,
-                        (*(*Hadron_list)[iev])[ipart].z,
-                        (*(*Hadron_list)[iev])[ipart].t);
-                oscar << line_buffer << endl;
+            if (total_number_of_particles > 0) {
+                // sub-header for each event
+                oscar << setw(10) << iev << "  " 
+                      << setw(10) << total_number_of_particles << "  " 
+                      << setw(8) << 0.0 << "  " << setw(8) << 0.0 << endl;
+                for (int ipart = 0; ipart < total_number_of_particles;
+                     ipart++) {
+                    oscar << setw(10) << ipart + 1 << "  "
+                          << setw(10) << (*(*Hadron_list)[iev])[ipart].pid
+                          << "  ";
+                    sprintf(line_buffer, 
+                            "%24.16e  %24.16e  %24.16e  %24.16e  %24.16e  %24.16e  %24.16e  %24.16e  %24.16e",
+                            (*(*Hadron_list)[iev])[ipart].px,
+                            (*(*Hadron_list)[iev])[ipart].py,
+                            (*(*Hadron_list)[iev])[ipart].pz,
+                            (*(*Hadron_list)[iev])[ipart].E,
+                            (*(*Hadron_list)[iev])[ipart].mass,
+                            (*(*Hadron_list)[iev])[ipart].x,
+                            (*(*Hadron_list)[iev])[ipart].y,
+                            (*(*Hadron_list)[iev])[ipart].z,
+                            (*(*Hadron_list)[iev])[ipart].t);
+                    oscar << line_buffer << endl;
+                }
             }
         }
     }
@@ -2744,7 +2740,7 @@ void EmissionFunctionArray::combine_samples_to_OSCAR() {
 void EmissionFunctionArray::combine_samples_to_gzip_file() {
     Stopwatch sw;
     sw.tic();
-    cout << " -- Now combine sample files to a gzip file..." << endl;
+    messager.info(" -- Now combine sample files to a gzip file...");
 
     // open file for output
     std::string gzip_output_filename = "particle_samples.gz";
@@ -2799,7 +2795,7 @@ void EmissionFunctionArray::calculate_dN_dxtdy_4all_particles() {
     Stopwatch sw;
     sw.tic();
 
-    double *bulkvisCoefficients = new double[3];
+    std::array<double, 3> bulkvisCoefficients = {0.0};
 
     // read parameters
     double tolerance = paraRdr->getVal("grouping_tolerance");
@@ -2902,7 +2898,7 @@ void EmissionFunctionArray::calculate_dN_dxtdy_4all_particles() {
                 last_particle_mu = mu;
                 //last_particle_baryon = baryon;
 
-                double* results_ptr = new double[5];
+                std::array<double, 5> results_ptr = {0.0};
                 calculate_dN_analytic(particle, mu, temp, results_ptr);
 
                 double N_eq = (
@@ -2927,8 +2923,6 @@ void EmissionFunctionArray::calculate_dN_dxtdy_4all_particles() {
                 total_N = N_eq + deltaN_bulk + deltaN_qmu;
 
                 integral_laststep[n] = total_N;
-
-                delete [] results_ptr;
             }
             dN_dxtdy_4all[l][n] = integral_laststep[n];
         }
@@ -2950,8 +2944,6 @@ void EmissionFunctionArray::calculate_dN_dxtdy_4all_particles() {
         to_write.printTable(of);
         of.close();
     }
-
-    delete [] bulkvisCoefficients;
 
     sw.toc();
     cout << endl << " -- Calculate_dN_dxtdy_4all_particles finished in "
@@ -2978,7 +2970,7 @@ void EmissionFunctionArray::calculate_dN_dxtdy_for_one_particle_species(
     Stopwatch sw;
     sw.tic();
 
-    double *bulkvisCoefficients = new double[3];
+    std::array<double, 3> bulkvisCoefficients = {0.0};
 
     // now loop over all freeze-out cells and particles
     double unit_factor = 1.0/pow(hbarC, 3);  // unit: convert to unitless
@@ -3048,9 +3040,9 @@ void EmissionFunctionArray::calculate_dN_dxtdy_for_one_particle_species(
         }
 
         double prefactor = degen/(2.*M_PI*M_PI);
-        
+
         // calculate dN / (dxt dy)
-        double* results_ptr = new double[5];
+        std::array<double, 5> results_ptr = {0.0};
         calculate_dN_analytic(particle, mu, temp, results_ptr);
 
         double N_eq = unit_factor*prefactor*dsigma_dot_u*results_ptr[0];
@@ -3073,11 +3065,8 @@ void EmissionFunctionArray::calculate_dN_dxtdy_for_one_particle_species(
 
         total_N = N_eq + deltaN_bulk + deltaN_qmu;
 
-        delete [] results_ptr;
         dN_dxtdy_for_one_particle_species[l] = total_N;
     }
-
-    delete [] bulkvisCoefficients;
 
     sw.toc();
     cout << endl
@@ -3089,7 +3078,7 @@ void EmissionFunctionArray::calculate_dN_dxtdy_for_one_particle_species(
 //***************************************************************************
 void EmissionFunctionArray::calculate_dN_analytic(
         const particle_info* particle, double mu, double Temperature,
-        double* results) {
+        std::array<double, 5> &results) {
 /* calculate particle yield using analytic formula as a series sum of Bessel 
    functions. The particle yield emitted from a given fluid cell is 
    \dsigma_mu u^\mu times the return value from this function
@@ -3127,7 +3116,8 @@ void EmissionFunctionArray::calculate_dN_analytic(
         if (INCLUDE_DIFFUSION_DELTAF == 1) {
             deltaN_qmu_term1 += theta/n*fugacity*K_2;
 
-            double *sf_expint_En_ptr = new double[sf_expint_truncate_order-1];
+            std::vector<double> sf_expint_En_ptr(
+                                            sf_expint_truncate_order-1, 0.);
             get_special_function_En(arg, sf_expint_En_ptr);
 
             double mbeta = mass*beta;
@@ -3151,8 +3141,6 @@ void EmissionFunctionArray::calculate_dN_analytic(
             }
             I_1_n = -(mbeta*mbeta*mbeta)*I_1_n;
             deltaN_qmu_term2 += n*theta*fugacity*I_1_n;
-
-            delete [] sf_expint_En_ptr;
         }
     }
 
@@ -3240,7 +3228,7 @@ int EmissionFunctionArray::compute_number_of_sampling_needed(
     if (hydro_mode == 2) {
         nev_needed *= 10;
     }
-    if (nev_needed < 1) nev_needed = 1;
+    nev_needed = std::max(1, std::min(10000, nev_needed));
     return(nev_needed);
 }
 
@@ -3253,10 +3241,9 @@ void EmissionFunctionArray::sample_using_dN_dxtdy_4all_particles_conventional() 
 */
     Stopwatch sw_total;
     sw_total.tic();
-    cout << " Function sample_using_dN_dxtdy_4all_particles started..."
-         << endl;
+    messager.info(" Function sample_using_dN_dxtdy_4all_particles started...");
 
-    double *bulkvisCoefficients = new double[3];
+    std::array<double, 3> bulkvisCoefficients = {0.0};
 
     // load pre-calculated table
     // (x,y) that y*exp(-y) = x; y<=1
@@ -3299,12 +3286,12 @@ void EmissionFunctionArray::sample_using_dN_dxtdy_4all_particles_conventional() 
     // use "conventional" sampling
     // reusable variables
     // dN_dxtdy for 1 particle
-    vector<double> dN_dxtdy_single_particle(FO_length, 0);
-    cout << endl << "Sampling using dN/dy with "
-         << "sample_using_dN_dxtdy_4all_particles function."
-         << endl << endl;
-    cout << "number of repeated sampling = " << number_of_repeated_sampling
-         << endl;
+    //vector<double> dN_dxtdy_single_particle(FO_length, 0);
+    messager << "Sampling using dN/dy with "
+             << "sample_using_dN_dxtdy_4all_particles function.";
+    messager.flush("info");
+    messager<< "number of repeated sampling = " << number_of_repeated_sampling;
+    messager.flush("info");
     for (int n = 0; n < number_of_chosen_particles; n++) {
         int real_particle_idx = chosen_particles_sampling_table[n];
         const particle_info *particle = &particles[real_particle_idx];
@@ -3314,8 +3301,9 @@ void EmissionFunctionArray::sample_using_dN_dxtdy_4all_particles_conventional() 
         const int baryon  = particle->baryon;
         const int strange = particle->strange;
         const int charge  = particle->charge;
-        cout << "Index: " << n << ", Name: " << particle->name
-             << ", Monte-carlo index: " << particle->monval << endl;
+        messager << "Index: " << n << ", Name: " << particle->name
+                 << ", Monte-carlo index: " << particle->monval;
+        messager.flush("info");
         if (local_charge_conservation == 1) {
             if (particle->charge < 0) {
                 cout << "local charge conservation is turn on~ "
@@ -3324,7 +3312,7 @@ void EmissionFunctionArray::sample_using_dN_dxtdy_4all_particles_conventional() 
                 continue;
             }
         }
-        
+
         calculate_dN_dxtdy_for_one_particle_species(real_particle_idx);
 
         // prepare for outputs
@@ -3357,17 +3345,18 @@ void EmissionFunctionArray::sample_using_dN_dxtdy_4all_particles_conventional() 
         std::stringstream control_str_buffer;
 
         // prepare the inverse CDF
-        for (long l = 0; l < FO_length; l++) {
-            //dN_dxtdy_single_particle[l] = dN_dxtdy_4all[l][n];
-            dN_dxtdy_single_particle[l] = (
-                                    dN_dxtdy_for_one_particle_species[l]);
-        }
-        RandomVariable1DArray rand1D(&dN_dxtdy_single_particle,
-                                     ran_gen_ptr.lock(), 0);
+        //for (long l = 0; l < FO_length; l++) {
+        //    dN_dxtdy_single_particle[l] = dN_dxtdy_4all[l][n];
+        //    dN_dxtdy_single_particle[l] = (
+        //                            dN_dxtdy_for_one_particle_species[l]);
+        //}
+        //RandomVariable1DArray rand1D(&dN_dxtdy_single_particle,
+        //                             ran_gen_ptr, 0);
+        RandomVariable1DArray rand1D(&dN_dxtdy_for_one_particle_species,
+                                     ran_gen_ptr, 0);
 
         // first get total number of particles
         double dN_dy = rand1D.return_sum();
-        cout << " -- Sampling using dN_dy=" << dN_dy << ", ";
 
         // get y range for sampling
         const double y_LB = paraRdr->getVal("y_LB");
@@ -3379,7 +3368,9 @@ void EmissionFunctionArray::sample_using_dN_dxtdy_4all_particles_conventional() 
             // for (3+1)-d case, dN_dy is total N (summing over all etas)
             dN = dN_dy;
         }
-        cout << "dN=" << dN << "..." << endl;
+        messager << " -- Sampling using dN_dy=" << dN_dy << ", "
+                 << "dN=" << dN << "...";
+        messager.flush("info");
 
         Stopwatch sw;
         sw.tic();
@@ -3397,8 +3388,8 @@ void EmissionFunctionArray::sample_using_dN_dxtdy_4all_particles_conventional() 
         // maximum_guess to maximum_guess*maximum_ratio*adjust_maximum_to
         // for the rest of sampling. Note that you want to set
         // adjust_maximum_to to be slightly larger than 1 to avoid errors.
-        long number_of_tries      = 0;
-        int number_of_success     = 0;
+        //long number_of_tries      = 0;
+        //int number_of_success     = 0;
 
         long sample_writing_signal  = 0;
         long control_writing_signal = 0;
@@ -3424,7 +3415,7 @@ void EmissionFunctionArray::sample_using_dN_dxtdy_4all_particles_conventional() 
                     control_writing_signal = 0;
                 }
             }
-            
+
             long sample_idx = 1;
             while (sample_idx <= number_to_sample) {
                 // first, sample eta and freeze-out cell index
@@ -3439,7 +3430,7 @@ void EmissionFunctionArray::sample_using_dN_dxtdy_4all_particles_conventional() 
                 if (INCLUDE_DIFFUSION_DELTAF == 1)
                     deltaf_qmu_coeff = get_deltaf_qmu_coeff(surf->Tdec,
                                                             surf->muB);
-                
+
                 const double maximum_guess = estimate_maximum(
                         surf, real_particle_idx, mass, sign, degen,
                         baryon, strange, charge,
@@ -3452,21 +3443,21 @@ void EmissionFunctionArray::sample_using_dN_dxtdy_4all_particles_conventional() 
                                 pT_to, y_minus_eta_s_range, maximum_guess,
                                 surf, bulkvisCoefficients, deltaf_qmu_coeff,
                                 pT, phi, y_minus_eta_s);
-    
+
                 if (status == 0) {
                     continue;
                 } else {
                     sample_idx++;
                 }
-                number_of_success++; // to track success rate
-                
+                //number_of_success++; // to track success rate
+
                 double eta_s = surf->eta;
                 if (hydro_mode != 2) {
                     double rap = (y_LB + (y_RB - y_LB)
-                                         *ran_gen_ptr.lock()->rand_uniform());
+                                         *ran_gen_ptr->rand_uniform());
                     eta_s = rap - y_minus_eta_s;
                 }
-                
+
                 std::string particle_string = add_one_sampled_particle(
                         repeated_sampling_idx, FO_idx, surf,
                         particle->monval, mass, pT, phi, y_minus_eta_s, eta_s);
@@ -3496,7 +3487,7 @@ void EmissionFunctionArray::sample_using_dN_dxtdy_4all_particles_conventional() 
                                     repeated_sampling_idx, FO_idx, surf,
                                     -particle->monval, mass,
                                     pT2, phi2, y_minus_eta_s2, eta_s);
-                    
+
                     if (flag_output_samples_into_files == 1) {
                         sample_str_buffer << particle_string2;
                         sample_writing_signal++;
@@ -3532,13 +3523,13 @@ void EmissionFunctionArray::sample_using_dN_dxtdy_4all_particles_conventional() 
         }
         if (AMOUNT_OF_OUTPUT > 0) print_progressbar(1);
 
-        if (AMOUNT_OF_OUTPUT > 3) {
-            cout << endl << " -- -- Number of tries: " << number_of_tries 
-                 << ", number of success: " << number_of_success << endl
-                 << " -- -- Success rate: " 
-                 << static_cast<double>(number_of_success)/static_cast<double>(number_of_tries)
-                 << endl;
-        }
+        //if (AMOUNT_OF_OUTPUT > 3) {
+        //    cout << endl << " -- -- Number of tries: " << number_of_tries 
+        //         << ", number of success: " << number_of_success << endl
+        //         << " -- -- Success rate: " 
+        //         << static_cast<double>(number_of_success)/static_cast<double>(number_of_tries)
+        //         << endl;
+        //}
 
         sw.toc();
         cout << endl << "Sampling finished in " 
@@ -3586,8 +3577,6 @@ void EmissionFunctionArray::sample_using_dN_dxtdy_4all_particles_conventional() 
         }
         of_sample_format.close();
     }
-    
-    delete [] bulkvisCoefficients;
 
     sw_total.toc();
     cout << endl 
@@ -3596,7 +3585,7 @@ void EmissionFunctionArray::sample_using_dN_dxtdy_4all_particles_conventional() 
 }
 
 void EmissionFunctionArray::getbulkvisCoefficients(
-                double Tdec, double* bulkvisCoefficients) {
+                double Tdec, std::array<double, 3> &bulkvisCoefficients) {
    double Tdec_fm = Tdec/hbarC;  // [1/fm]
    double Tdec_fm_power[11];    // cache the polynomial power of Tdec_fm
    Tdec_fm_power[1] = Tdec_fm;
@@ -3606,7 +3595,7 @@ void EmissionFunctionArray::getbulkvisCoefficients(
    if (bulk_deltaf_kind == 0) {
        // 14 moment expansion
         // load from file
-        
+
         //B0 [fm^3/GeV^3]
         bulkvisCoefficients[0] = (
                         bulkdf_coeff->interp(1, 2, Tdec_fm, 5)/pow(hbarC, 3));
@@ -3904,7 +3893,7 @@ double EmissionFunctionArray::get_deltaf_qmu_coeff(double T, double muB) {
                          /delta_qmu_coeff_table_dT - idx_T);
     double y_fraction = ((muB - delta_qmu_coeff_table_mu0)
                          /delta_qmu_coeff_table_dmu - idx_mu); 
-    
+
     //avoid overflow
     if (idx_mu > deltaf_qmu_coeff_table_length_mu - 2) {
         return(1e30);
@@ -3912,7 +3901,7 @@ double EmissionFunctionArray::get_deltaf_qmu_coeff(double T, double muB) {
     if (idx_T > deltaf_qmu_coeff_table_length_T - 2) {
         return(1e30);
     }
-    
+
     // avoid underflow
     if (idx_mu < 0) {
         return(1e30);
@@ -3920,7 +3909,7 @@ double EmissionFunctionArray::get_deltaf_qmu_coeff(double T, double muB) {
     if (idx_T < 0) {
         return(1e30);
     }
-    
+
     double f1 = deltaf_qmu_coeff_tb[idx_T][idx_mu];
     double f2 = deltaf_qmu_coeff_tb[idx_T][idx_mu+1];
     double f3 = deltaf_qmu_coeff_tb[idx_T+1][idx_mu+1];
@@ -3929,8 +3918,8 @@ double EmissionFunctionArray::get_deltaf_qmu_coeff(double T, double muB) {
                     + f2*(1. - x_fraction)*y_fraction 
                     + f3*x_fraction*y_fraction
                     + f4*x_fraction*(1. - y_fraction));
-    return(coeff*hbarC);
-#else
+    return(coeff*hbarC); // from coeff to coeff*hbarC
+#else // L. Du
     PRECISION corrL = correlationLength(T, muB);
     PRECISION corrL2 = corrL * corrL; // unitless
     PRECISION sigmaB = baryonDiffusionConstant(T, muB); // 1/(GeV*fm^2)
@@ -3945,7 +3934,7 @@ double EmissionFunctionArray::get_deltaf_qmu_coeff(double T, double muB) {
 // L. Du **************************************************************************************************
 
 void EmissionFunctionArray::initialize_special_function_arrays() {
-    cout << "Initializing special function arrays ... ";
+    messager.info("Initializing special function arrays ... ");
     sf_expint_truncate_order = 10;
     sf_x_min = 0.5;
     sf_x_max = 400;
@@ -3981,8 +3970,9 @@ void EmissionFunctionArray::initialize_special_function_arrays() {
     lambert_x_min = 0;
     lambert_x_max = 200.0;
     lambert_dx = 0.005;
-    lambert_tb_length = (int)((lambert_x_max - lambert_x_min)/lambert_dx) + 1;
-    lambert_W = new double [lambert_tb_length];
+    int lambert_tb_length = static_cast<int>(
+                        ((lambert_x_max - lambert_x_min)/lambert_dx) + 1);
+    lambert_W.resize(lambert_tb_length, 0.0);
     //ofstream check("lambertw_function.dat");
     for (int i = 0; i < lambert_tb_length; i++) {
         double lambert_x_local = lambert_x_min + i*lambert_dx;
@@ -3991,7 +3981,6 @@ void EmissionFunctionArray::initialize_special_function_arrays() {
         //      << lambert_x_local << "   " << lambert_W[i] << endl;
     }
     //check.close();
-    cout << "done!" << endl;
 }
 
 double EmissionFunctionArray::get_special_function_K2(double arg) {
@@ -4032,8 +4021,8 @@ double EmissionFunctionArray::get_special_function_K1(double arg) {
     return(results);
 }
 
-void EmissionFunctionArray::get_special_function_En(double arg, 
-                                                    double* results) {
+void EmissionFunctionArray::get_special_function_En(
+                                double arg, std::vector<double> &results) {
     if (arg < sf_x_min || arg > sf_x_max-sf_dx) {
         if (AMOUNT_OF_OUTPUT > 5) {
             cout << "EmissionFunctionArray::get_special_function_En: "
@@ -4277,7 +4266,7 @@ double EmissionFunctionArray::estimate_diffusion_maximum(
 
 double EmissionFunctionArray::get_deltaf_bulk(
         double mass, double pdotu, double bulkPi, double Tdec, int sign,
-        double f0, double *bulkvisCoefficients) {
+        double f0, const std::array<double, 3> bulkvisCoefficients) {
     if (INCLUDE_BULK_DELTAF== 0) return(0.0);
     double delta_f_bulk = 0.0;
     if (bulk_deltaf_kind == 0) {
@@ -4312,7 +4301,8 @@ int EmissionFunctionArray::sample_momemtum_from_a_fluid_cell(
         const int baryon, const int strange, const int charge,
         const double pT_to, const double y_minus_eta_s_range,
         const double maximum_guess, const FO_surf *surf,
-        double *bulkvisCoefficients, const double deltaf_qmu_coeff,
+        const std::array<double, 3> bulkvisCoefficients,
+        const double deltaf_qmu_coeff,
         double &pT, double &phi, double &y_minus_eta_s
         ) {
     const double Tdec = surf->Tdec;
@@ -4333,11 +4323,11 @@ int EmissionFunctionArray::sample_momemtum_from_a_fluid_cell(
         // Basically it is "just Cooper-Frye"
 
         // sample according to pT dpT
-        pT = sqrt(pT_to*pT_to*ran_gen_ptr.lock()->rand_uniform());
-        phi = 2*M_PI*ran_gen_ptr.lock()->rand_uniform();
-        y_minus_eta_s = ((1. - 2.*ran_gen_ptr.lock()->rand_uniform())
+        pT = sqrt(pT_to*pT_to*ran_gen_ptr->rand_uniform());
+        phi = 2*M_PI*ran_gen_ptr->rand_uniform();
+        y_minus_eta_s = ((1. - 2.*ran_gen_ptr->rand_uniform())
                          *y_minus_eta_s_range);
-        
+
         double mT = sqrt(mass*mass + pT*pT);
         double px = pT*cos(phi);
         double py = pT*sin(phi);
@@ -4352,18 +4342,27 @@ int EmissionFunctionArray::sample_momemtum_from_a_fluid_cell(
         double pdsigma = (p0*surf->da0 + px*surf->da1
                           + py*surf->da2 + p3*surf->da3/surf->tau);
 
-        double Wfactor = (
-              p0*p0*surf->pi00 - 2.0*p0*px*surf->pi01 - 2.0*p0*py*surf->pi02
-            - 2.0*p0*p3*surf->pi03 + px*px*surf->pi11 + 2.0*px*py*surf->pi12
-            + 2.0*px*p3*surf->pi13 + py*py*surf->pi22 + 2.0*py*p3*surf->pi23
-            + p3*p3*surf->pi33);
+        // delta f for shear viscosity
+        double delta_f_shear = 0.;
+        if (INCLUDE_DELTAF == 1) {
+            double Wfactor = (
+                  p0*p0*surf->pi00 - 2.0*p0*px*surf->pi01 - 2.0*p0*py*surf->pi02
+                - 2.0*p0*p3*surf->pi03 + px*px*surf->pi11 + 2.0*px*py*surf->pi12
+                + 2.0*px*p3*surf->pi13 + py*py*surf->pi22 + 2.0*py*p3*surf->pi23
+                + p3*p3*surf->pi33);
 
-        double delta_f_shear = ((1. - F0_IS_NOT_SMALL*sign*f0)*Wfactor
-                                *deltaf_prefactor);
+            delta_f_shear = ((1. - F0_IS_NOT_SMALL*sign*f0)*Wfactor
+                             *deltaf_prefactor);
+        }
 
-        double delta_f_bulk = get_deltaf_bulk(
+        // delta f for bulk viscosity
+        double delta_f_bulk = 0.;
+        if (INCLUDE_BULK_DELTAF == 1) {
+            delta_f_bulk = get_deltaf_bulk(
                                         mass, pdotu, surf->bulkPi/hbarC,
                                         Tdec, sign, f0, bulkvisCoefficients);
+        }
+
         // delta f for diffusion
         double delta_f_qmu = 0.0;
         if (INCLUDE_DIFFUSION_DELTAF == 1) {
@@ -4402,7 +4401,7 @@ int EmissionFunctionArray::sample_momemtum_from_a_fluid_cell(
                  << "than 1: " << accept_prob << endl;
         }
 
-        if (ran_gen_ptr.lock()->rand_uniform() < accept_prob) {
+        if (ran_gen_ptr->rand_uniform() < accept_prob) {
             return(1);
         }
         tries++;
@@ -4423,7 +4422,8 @@ double EmissionFunctionArray::estimate_maximum(
         const double sign, const double degen,
         const int baryon, const int strange, const int charge,
         TableFunction &z_exp_m_z,
-        const double *bulkvisCoefficients, const double deltaf_qmu_coeff) {
+        const std::array<double, 3> bulkvisCoefficients,
+        const double deltaf_qmu_coeff) {
     const double prefactor = 1.0/(8.0*(M_PI*M_PI*M_PI))/hbarC/hbarC/hbarC;
 
     const double Tdec     = surf->Tdec;
@@ -4459,7 +4459,7 @@ double EmissionFunctionArray::estimate_maximum(
         qmu[1] = surf->qmu1;
         qmu[2] = surf->qmu2;
         qmu[3] = surf->qmu3;
-        
+
         double rho_B = surf->Bn;
         prefactor_qmu = rho_B/(Edec + Pdec);  // 1/GeV
     }
@@ -4488,17 +4488,20 @@ double EmissionFunctionArray::estimate_maximum(
     // (beta*E-A)*exp(beta*E-A) = +- A*exp(beta*mu-A) --- (*)
     const double guess_ideal = estimate_ideal_maximum(
                         sign, mass, Tdec, mu, f0_mass, z_exp_m_z);
-    
+
     // next viscous part
-    // p*dsigma pT f < dsgima_all*tmp_factor*sqrt(3)
-    //                 *E^3*f0*trace_Pi2/(2*T^2*(e+p))
-    const double trace_Pi2 = (
-        pi[0]*pi[0] + pi[4]*pi[4] + pi[7]*pi[7] + pi[9]*pi[9]
-        - 2.*pi[1]*pi[1] - 2.*pi[2]*pi[2] - 2.*pi[3]*pi[3]
-        + 2.*pi[5]*pi[5] + 2.*pi[6]*pi[6] + 2.*pi[8]*pi[8]);
-    const double pi_size = sqrt(trace_Pi2)/(Edec + Pdec);
-    const double guess_viscous = estimate_shear_viscous_maximum(
-            sign, mass, Tdec, mu, f0_mass, z_exp_m_z, pi_size);
+    double guess_viscous = 0.0;
+    if (INCLUDE_DELTAF == 1) {
+        // p*dsigma pT f < dsgima_all*tmp_factor*sqrt(3)
+        //                 *E^3*f0*trace_Pi2/(2*T^2*(e+p))
+        const double trace_Pi2 = (
+            pi[0]*pi[0] + pi[4]*pi[4] + pi[7]*pi[7] + pi[9]*pi[9]
+            - 2.*pi[1]*pi[1] - 2.*pi[2]*pi[2] - 2.*pi[3]*pi[3]
+            + 2.*pi[5]*pi[5] + 2.*pi[6]*pi[6] + 2.*pi[8]*pi[8]);
+        const double pi_size = sqrt(trace_Pi2)/(Edec + Pdec);
+        guess_viscous = estimate_shear_viscous_maximum(
+                sign, mass, Tdec, mu, f0_mass, z_exp_m_z, pi_size);
+    }
 
     // bulk delta f
     double guess_bulk = 0.0;
@@ -4519,7 +4522,7 @@ double EmissionFunctionArray::estimate_maximum(
             sign, baryon, mass, Tdec, mu, f0_mass, z_exp_m_z,
             prefactor_qmu, guess_ideal, qmu_mag_over_kappa_hat);
     }
-    
+
     // combine
     double maximum_guess = (prefactor*degen*dsigma_all
                             *(guess_ideal + guess_viscous 

@@ -24,17 +24,19 @@ read_FOdata::read_FOdata(ParameterReader* paraRdr_in, string path_in) {
     turn_on_bulk = paraRdr->getVal("turn_on_bulk");
     turn_on_rhob = paraRdr->getVal("turn_on_rhob");
     turn_on_diff = paraRdr->getVal("turn_on_diff");
-    surface_in_binary = false;
+    surface_in_binary = true;
 
     if (mode == 1 || mode == 2) {
         // determine read in format in surface.dat from MUSIC simulation
-        cout << "read in hyper-surface from MUSIC simulations ..." << endl;
+        messager.info("read in hyper-surface from MUSIC simulations ...");
         ostringstream config_file;
         config_file << path << "/music_input";
         ifstream configuration(config_file.str().c_str());
         if (!configuration.is_open()) {
-            cout << "read_FOdata::read_FOdata: can not find configuration file"
-                 << " " << config_file.str() << endl;
+            messager << "read_FOdata::read_FOdata: "
+                     << "can not find configuration file "
+                     << config_file.str();
+            messager.flush("error");
             exit(1);
         }
         string temp1;
@@ -55,19 +57,22 @@ read_FOdata::read_FOdata(ParameterReader* paraRdr_in, string path_in) {
             if (temp_name == "freeze_surface_in_binary") {
                 int flag_b;
                 ss >> flag_b;
-                if (flag_b == 1)
+                if (flag_b == 1) {
                     surface_in_binary = true;
+                } else {
+                    surface_in_binary = false;
+                }
             }
         }
         configuration.close();
         if (surface_in_binary)
-            cout << "the hyper-surface surface is in the binary format." << endl;
+            messager.info("the hyper-surface surface is in the binary format.");
         if (turn_on_bulk == 1)
-            cout << "the hyper-surface includes bulk viscosity." << endl;
+            messager.info("the hyper-surface includes bulk viscosity.");
         if (turn_on_rhob == 1)
-            cout << "the hyper-surface includes net baryon density." << endl;
+            messager.info("the hyper-surface includes net baryon density.");
         if (turn_on_diff == 1)
-            cout << "the hyper-surface includes baryon diffusion." << endl;
+            messager.info("the hyper-surface includes baryon diffusion.");
     }
     n_eta_skip = 0;
 }
@@ -216,7 +221,8 @@ void read_FOdata::read_in_chemical_potentials(string path,
         } else if (IEOS_music == 17) {       // BEST
             N_stableparticle = 0;
         } else {
-            cout << "invalid IEOS_music: " << IEOS_music << endl;
+            messager << "invalid IEOS_music: " << IEOS_music;
+            messager.flush("error");
             exit(-1);
         }
     }
@@ -228,10 +234,11 @@ void read_FOdata::read_in_chemical_potentials(string path,
 
     // read particle resonance decay table
     Nparticle = read_resonances_list(particle_ptr);
-    cout << "total number of particle species: " << Nparticle << endl;
+    messager << "total number of particle species: " << Nparticle;
+    messager.flush("info");
 
     if (N_stableparticle > 0) {
-        cout << " -- EOS is partially chemical equilibrium " << endl;
+        messager.info(" -- EOS is partially chemical equilibrium ");
         flag_PCE = 1;
         int FO_length = surf_ptr.size();
         double** particle_mu = new double* [N_stableparticle];
@@ -250,7 +257,7 @@ void read_FOdata::read_in_chemical_potentials(string path,
             delete [] particle_mu[i];
         delete [] particle_mu;
     } else {
-        cout << " -- EOS is chemical equilibrium. " << endl;
+        messager.info(" -- EOS is chemical equilibrium. ");
         flag_PCE = 0;
     }
 }
@@ -406,10 +413,10 @@ void read_FOdata::read_FOsurfdat_MUSIC_boost_invariant(
             surf_elem.bulkPi = array[28]*hbarC;   // GeV/fm^3
 
             surf_elem.Bn   = array[29];             // 1/fm^3
-            surf_elem.qmu0 = array[30]*hbarC;
-            surf_elem.qmu1 = array[31]*hbarC;
-            surf_elem.qmu2 = array[32]*hbarC;
-            surf_elem.qmu3 = array[33]*hbarC;
+            surf_elem.qmu0 = array[30];
+            surf_elem.qmu1 = array[31];
+            surf_elem.qmu2 = array[32];
+            surf_elem.qmu3 = array[33];
         } else {
             getline(surfdat, input, '\n');
             stringstream ss(input);
@@ -467,10 +474,10 @@ void read_FOdata::read_FOsurfdat_MUSIC_boost_invariant(
                 surf_elem.Bn = 0.0;
             }
             if (turn_on_diff == 1) {
-                ss >> dummy; surf_elem.qmu0 = dummy*hbarC;
-                ss >> dummy; surf_elem.qmu1 = dummy*hbarC;
-                ss >> dummy; surf_elem.qmu2 = dummy*hbarC;
-                ss >> dummy; surf_elem.qmu3 = dummy*hbarC;
+                ss >> surf_elem.qmu0;
+                ss >> surf_elem.qmu1;
+                ss >> surf_elem.qmu2;
+                ss >> surf_elem.qmu3;
             } else {
                 surf_elem.qmu0 = 0.0e0;
                 surf_elem.qmu1 = 0.0e0;
@@ -598,13 +605,13 @@ void read_FOdata::read_FOsurfdat_MUSIC(std::vector<FO_surf> &surf_ptr) {
             surf_elem.u2  = array[10];
             surf_elem.u3  = array[11];
 
-            surf_elem.Edec = array[12]*hbarC;   
+            surf_elem.Edec = array[12]*hbarC;
             surf_elem.Tdec = array[13]*hbarC;
             surf_elem.muB  = array[14]*hbarC;
             surf_elem.muS  = array[15]*hbarC;
             surf_elem.muC  = array[16]*hbarC;
             surf_elem.Pdec = array[17]*surf_elem.Tdec - surf_elem.Edec;
-            
+
             surf_elem.pi00 = array[18]*hbarC;  // GeV/fm^3
             surf_elem.pi01 = array[19]*hbarC;  // GeV/fm^3
             surf_elem.pi02 = array[20]*hbarC;  // GeV/fm^3
@@ -619,10 +626,10 @@ void read_FOdata::read_FOsurfdat_MUSIC(std::vector<FO_surf> &surf_ptr) {
             surf_elem.bulkPi = array[28]*hbarC;   // GeV/fm^3
 
             surf_elem.Bn   = array[29];             // 1/fm^3
-            surf_elem.qmu0 = array[30]*hbarC;
-            surf_elem.qmu1 = array[31]*hbarC;
-            surf_elem.qmu2 = array[32]*hbarC;
-            surf_elem.qmu3 = array[33]*hbarC;
+            surf_elem.qmu0 = array[30];
+            surf_elem.qmu1 = array[31];
+            surf_elem.qmu2 = array[32];
+            surf_elem.qmu3 = array[33];
         } else {
             // freeze out position
             surfdat >> surf_elem.tau;
@@ -676,10 +683,10 @@ void read_FOdata::read_FOsurfdat_MUSIC(std::vector<FO_surf> &surf_ptr) {
                 surf_elem.Bn = 0.0;
             }
             if (turn_on_diff == 1) {
-                surfdat >> dummy; surf_elem.qmu0 = dummy*hbarC;
-                surfdat >> dummy; surf_elem.qmu1 = dummy*hbarC;
-                surfdat >> dummy; surf_elem.qmu2 = dummy*hbarC;
-                surfdat >> dummy; surf_elem.qmu3 = dummy*hbarC;
+                surfdat >> surf_elem.qmu0;
+                surfdat >> surf_elem.qmu1;
+                surfdat >> surf_elem.qmu2;
+                surfdat >> surf_elem.qmu3;
             } else {
                 surf_elem.qmu0 = 0.0e0;
                 surf_elem.qmu1 = 0.0e0;
@@ -703,9 +710,9 @@ void read_FOdata::regulate_surface_cells(std::vector<FO_surf> &surf_ptr) {
         surf_i.u0 = sqrt(1. + surf_i.u1*surf_i.u1
                                  + surf_i.u2*surf_i.u2
                                  + surf_i.u3*surf_i.u3);
-        surf_i.qmu0 = ((  surf_i.u1*surf_i.qmu1
-                             + surf_i.u2*surf_i.qmu2
-                             + surf_i.u3*surf_i.qmu3)/surf_i.u0);
+        surf_i.qmu0 = ((surf_i.u1*surf_i.qmu1
+                        + surf_i.u2*surf_i.qmu2
+                        + surf_i.u3*surf_i.qmu3)/surf_i.u0);
         u_flow[0] = surf_i.u0;
         u_flow[1] = surf_i.u1;
         u_flow[2] = surf_i.u2;
@@ -833,18 +840,20 @@ int read_FOdata::read_resonances_list(std::vector<particle_info> &particle) {
         resofile >> particle_i.charge;
         resofile >> particle_i.decays;
         for (int j = 0; j < particle_i.decays; j++) {
+            decay_channel_info *temp_decay_channel = new decay_channel_info;
             resofile >> dummy_int;
-            resofile >> particle_i.decays_Npart[j];
-            resofile >> particle_i.decays_branchratio[j];
-            resofile >> particle_i.decays_part[j][0];
-            resofile >> particle_i.decays_part[j][1];
-            resofile >> particle_i.decays_part[j][2];
-            resofile >> particle_i.decays_part[j][3];
-            resofile >> particle_i.decays_part[j][4];
+            resofile >> temp_decay_channel->decay_Npart;
+            resofile >> temp_decay_channel->branching_ratio;
+            resofile >> temp_decay_channel->decay_part[0];
+            resofile >> temp_decay_channel->decay_part[1];
+            resofile >> temp_decay_channel->decay_part[2];
+            resofile >> temp_decay_channel->decay_part[3];
+            resofile >> temp_decay_channel->decay_part[4];
+            particle_i.decay_channels.push_back(temp_decay_channel);
         }
 
         //decide whether particle is stable under strong interactions
-        if (particle_i.decays_Npart[0] == 1) {
+        if (particle_i.decay_channels[0]->decay_Npart == 1) {
             particle_i.stable = 1;
         } else {
             particle_i.stable = 0;
@@ -876,52 +885,64 @@ int read_FOdata::read_resonances_list(std::vector<particle_info> &particle) {
             particle_j.decays = particle_i.decays;
             particle_j.stable = particle_i.stable;
             for (int j = 0; j < particle_j.decays; j++) {
-                particle_j.decays_Npart[j] = particle_i.decays_Npart[j];
-                particle_j.decays_branchratio[j] = 
-                                       particle_i.decays_branchratio[j];
-                for (int k = 0; k < Maxdecaypart; k++) {
-                    if (particle_i.decays_part[j][k] == 0) {
-                        particle_j.decays_part[j][k] = (
-                                       particle_i.decays_part[j][k]);
+                decay_channel_info *temp_anti_decay_channel = (
+                                                    new decay_channel_info);
+                temp_anti_decay_channel->decay_Npart = (
+                        particle_i.decay_channels[j]->decay_Npart);
+                temp_anti_decay_channel->branching_ratio =
+                        particle_i.decay_channels[j]->branching_ratio;
+                for (int k = 0; k < 5; k++) {
+                    int decay_part_monval = (
+                            particle_i.decay_channels[j]->decay_part[k]);
+                    if (decay_part_monval == 0) {
+                        // a null entry
+                        temp_anti_decay_channel->decay_part[k] = 0;
                     } else {
-                        int idx; 
-                        // find the index for decay particle
+                        // find the index for decay particle in the
+                        // current resonance table
+                        int idx;
                         for (idx = 0; idx < local_i; idx++) {
-                           if (particle[idx].monval 
-                                  == particle_i.decays_part[j][k]) {
-                              break;
-                           }
+                            if (particle[idx].monval == decay_part_monval) {
+                                break;
+                            }
                         }
-                        if (idx == local_i && particle_i.stable == 0 
-                             && particle_i.decays_branchratio[j] > eps) {
-                            cout << "Error: can not find decay particle index for "
-                                 << "anti-baryon!" << endl;
-                            cout << "particle monval : " 
-                                 << particle_i.decays_part[j][k] << endl;
+                        double temp_br = (
+                            particle_i.decay_channels[j]->branching_ratio);
+                        if (idx == local_i && particle_i.stable == 0
+                            && temp_br > eps) {
+                            messager << "Can not find decay particle index for "
+                                     << "anti-baryon!";
+                            messager.flush("error");
+                            messager << "particle monval : "
+                                     << decay_part_monval;
+                            messager.flush("error");
                             exit(1);
                         }
-                        if (particle[idx].baryon == 0 && particle[idx].charge == 0 
+                        if (particle[idx].baryon == 0
+                            && particle[idx].charge == 0
                             && particle[idx].strange == 0) {
-                            particle_j.decays_part[j][k] = (
-                                           particle_i.decays_part[j][k]);
+                            temp_anti_decay_channel->decay_part[k] = (
+                                particle_i.decay_channels[j]->decay_part[k]);
                         } else {
-                            particle_j.decays_part[j][k] = (
-                                           - particle_i.decays_part[j][k]);
+                            temp_anti_decay_channel->decay_part[k] = (
+                                - particle_i.decay_channels[j]->decay_part[k]);
                         }
                     }
                 }
+                particle_j.decay_channels.push_back(temp_anti_decay_channel);
             }
             particle.push_back(particle_j);
         }
         local_i++;   // Add one to the counting variable "i" for the meson/baryon
     }
     for (auto &particle_i: particle) {
-       if (particle_i.baryon == 0) {
-          particle_i.sign = -1;
-       } else {
-          particle_i.sign=1;
-       }
+        if (particle_i.baryon == 0) {
+            particle_i.sign = -1;
+        } else {
+            particle_i.sign=1;
+        }
     }
+    cout << "done." << endl;
     return(particle.size());
 }
 
@@ -956,16 +977,18 @@ void read_FOdata::calculate_particle_mu_PCE(int Nparticle,
                 table_path
                 + "/EOS_tables/s95p-v1-PCE165/EOS_particletable.dat");
         } else {
-            cout << "invalid EOS option for MUSIC: " << IEOS_music << endl;
+            messager << "invalid EOS option for MUSIC: " << IEOS_music;
+            messager.flush("error");
             exit(-1);
         }
     } else {
-        cout << "invalid hydro mode: " << mode << endl;
+        messager << "invalid hydro mode: " << mode;
+        messager.flush("error");
         exit(-1);
     }
 
     particletable >> Nstable_particle;
-    double *stable_particle_monval = new double[Nstable_particle];
+    std::vector<int> stable_particle_monval(Nstable_particle, 0);
     for (int i = 0; i < Nstable_particle; i++) {
         particletable >> Idummy >> stable_particle_monval[i];
         particletable.getline(cdummy, 256);
@@ -973,10 +996,7 @@ void read_FOdata::calculate_particle_mu_PCE(int Nparticle,
     particletable.close();
 
     for (int k = 0; k < FO_length; k++) {
-        FOsurf_ptr[k].particle_mu_PCE = new double[Nparticle];
-        for (int ii = 0; ii < Nparticle; ii++) {
-            FOsurf_ptr[k].particle_mu_PCE[ii] = 0.0;
-        }
+        FOsurf_ptr[k].particle_mu_PCE.resize(Nparticle, 0.0);
     }
 
     // assign chemical potentials for stable particles
@@ -996,19 +1016,23 @@ void read_FOdata::calculate_particle_mu_PCE(int Nparticle,
     for (int i = 0; i < Nparticle; i++) {
         if (particle[i].stable == 0) {
             for (int j = 0; j < particle[i].decays; j++) {
-                for (int k = 0; k < std::abs(particle[i].decays_Npart[j]); k++) {
+                for (int k = 0;
+                     k < std::abs(particle[i].decay_channels[j]->decay_Npart);
+                     k++) {
                     for (int l = 0; l < Nparticle; l++) {
-                        if (particle[i].decays_part[j][k]
+                        if (particle[i].decay_channels[j]->decay_part[k]
                             == particle[l].monval) {
                             for (int m = 0; m < FO_length; m++)
                                 FOsurf_ptr[m].particle_mu_PCE[i] += (
-                                            particle[i].decays_branchratio[j]
-                                            *FOsurf_ptr[m].particle_mu_PCE[l]);
+                                    particle[i].decay_channels[j]->branching_ratio
+                                    *FOsurf_ptr[m].particle_mu_PCE[l]);
                             break;
                         }
-                        if (l == Nparticle-1)
-                            cout << "warning: can not find particle"
-                                 <<  particle[i].name << endl;
+                        if (l == Nparticle-1) {
+                            messager << "warning: can not find particle"
+                                     <<  particle[i].name;
+                            messager.flush("error");
+                        }
                     }
                 }
             }
